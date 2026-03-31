@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ReviewService {
+  private readonly logger = new Logger(ReviewService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async getReviewQueue(userId: string) {
@@ -18,6 +20,10 @@ export class ReviewService {
       orderBy: { nextReviewAt: 'asc' },
     });
 
+    this.logger.log(
+      `Fetched ${items.length} review items for user ${userId}`,
+    );
+
     return {
       items: items.map((item) => ({
         id: item.id,
@@ -31,7 +37,7 @@ export class ReviewService {
     };
   }
 
-  async updateReviewAfterQuiz(
+  async updateAfterQuiz(
     noteId: string,
     score: number,
     missingConcepts: string[],
@@ -80,5 +86,9 @@ export class ReviewService {
         },
       });
     }
+
+    this.logger.log(
+      `Updated review for note ${noteId}: score=${score}, nextReview=${nextReviewAt.toISOString()}`,
+    );
   }
 }

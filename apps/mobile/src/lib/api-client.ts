@@ -1,22 +1,31 @@
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-interface RequestOptions {
-  method?: string;
-  body?: unknown;
+export class ApiError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
 
-export class ApiClient {
+class ApiClient {
   private token: string | null = null;
+  private onUnauthorized?: () => void;
 
   setToken(token: string | null) {
     this.token = token;
   }
 
-  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body } = options;
+  setUnauthorizedHandler(handler: () => void) {
+    this.onUnauthorized = handler;
+  }
 
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...((options.headers as Record<string, string>) ?? {}),
     };
 
     if (this.token) {
@@ -24,31 +33,48 @@ export class ApiClient {
     }
 
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
+      ...options,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
     });
 
+    if (response.status === 401 && this.onUnauthorized) {
+      this.onUnauthorized();
+      throw new ApiError(401, 'Unauthorized');
+    }
+
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
+      const body = await response.json().catch(() => ({ message: 'Request failed' }));
+      throw new ApiError(response.status, body.message || `HTTP ${response.status}`);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
     }
 
     return response.json();
   }
 
   // Auth
-  register(email: string, password: string) {
-    return this.request('/auth/register', { method: 'POST', body: { email, password } });
+  login(email: string, password: string) {
+    return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
   }
 
-  login(email: string, password: string) {
-    return this.request('/auth/login', { method: 'POST', body: { email, password } });
+  register(email: string, password: string) {
+    return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
   }
 
   // Notes
   createNote(topic: string, rawNote: string) {
-    return this.request('/notes', { method: 'POST', body: { topic, rawNote } });
+    return this.request('/notes', {
+      method: 'POST',
+      body: JSON.stringify({ topic, rawNote }),
+    });
   }
 
   getNotes() {
@@ -60,7 +86,10 @@ export class ApiClient {
   }
 
   updateNote(id: string, data: { topic?: string; rawNote?: string }) {
-    return this.request(`/notes/${id}`, { method: 'PUT', body: data });
+    return this.request(`/notes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   }
 
   deleteNote(id: string) {
@@ -73,7 +102,10 @@ export class ApiClient {
 
   // Quiz
   generateQuiz(noteId: string) {
-    return this.request('/quizzes/generate', { method: 'POST', body: { noteId } });
+    return this.request('/quizzes/generate', {
+      method: 'POST',
+      body: JSON.stringify({ noteId }),
+    });
   }
 
   getQuiz(id: string) {
@@ -81,7 +113,10 @@ export class ApiClient {
   }
 
   submitQuiz(id: string, answers: { questionIndex: number; answer: string }[]) {
-    return this.request(`/quizzes/${id}/submit`, { method: 'POST', body: { answers } });
+    return this.request(`/quizzes/${id}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    });
   }
 
   // Review

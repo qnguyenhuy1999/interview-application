@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { ReviewService } from '../review/review.service';
 
 @Injectable()
 export class QuizService {
+  private readonly logger = new Logger(QuizService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly reviewService: ReviewService,
   ) {}
 
   async generateQuiz(userId: string, noteId: string) {
@@ -35,6 +39,8 @@ export class QuizService {
         schemaVersion: '1.0',
       },
     });
+
+    this.logger.log(`Generated quiz ${quiz.id} for note ${noteId}`);
 
     return this.mapQuizResponse(quiz);
   }
@@ -69,6 +75,7 @@ export class QuizService {
     const questions = (quiz.questions as any).questions || [];
     const results = [];
     let totalScore = 0;
+    const allMissingConcepts: string[] = [];
 
     for (const submission of answers) {
       const question = questions[submission.questionIndex];
@@ -94,6 +101,7 @@ export class QuizService {
       }
 
       totalScore += score;
+      allMissingConcepts.push(...missingConcepts);
       results.push({
         questionIndex: submission.questionIndex,
         score,
@@ -107,10 +115,15 @@ export class QuizService {
         quizId,
         userAnswer: JSON.stringify(answers),
         score: totalScore,
-        missingConcepts: results.flatMap((r) => r.missingConcepts),
+        missingConcepts: allMissingConcepts,
         feedback: JSON.stringify(results),
       },
     });
+
+    // Update review queue based on quiz result
+    await this.reviewService.updateAfterQuiz(quiz.noteId, totalScore, allMissingConcepts);
+
+    this.logger.log(`Quiz ${quizId} submitted: score=${totalScore}`);
 
     return {
       quizId,

@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 
 @Injectable()
 export class AiService {
-  private client: OpenAI;
+  private readonly logger = new Logger(AiService.name);
+  private readonly client: OpenAI;
+  private readonly maxRetries = 1;
 
   constructor(private readonly config: ConfigService) {
     this.client = new OpenAI({
@@ -12,13 +14,38 @@ export class AiService {
     });
   }
 
+  private async callAi<T>(
+    systemPrompt: string,
+    userPrompt: string,
+    attempt = 0,
+  ): Promise<T> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('AI returned empty response');
+      }
+
+      return JSON.parse(content) as T;
+    } catch (err) {
+      if (attempt < this.maxRetries) {
+        this.logger.warn(`AI call failed (attempt ${attempt + 1}), retrying: ${(err as Error).message}`);
+        return this.callAi<T>(systemPrompt, userPrompt, attempt + 1);
+      }
+      throw err;
+    }
+  }
+
   async generateDeepDive(noteContent: string): Promise<Record<string, any>> {
-    const response = await this.client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a Senior Software Architect and Technical Interviewer.
+    const systemPrompt = `You are a Senior Software Architect and Technical Interviewer.
 
 Your task is to explain technical concepts at a Senior Fullstack Developer level.
 
@@ -32,11 +59,9 @@ Rules:
 - Include common interview traps.
 - Do not hallucinate unknown facts.
 - If topic is ambiguous, clearly state assumptions.
-- Return ONLY valid JSON matching this exact structure.`,
-        },
-        {
-          role: 'user',
-          content: `Topic: ${noteContent}
+- Return ONLY valid JSON matching this exact structure.`;
+
+    const userPrompt = `Topic: ${noteContent}
 
 Context: I am preparing for a Senior Fullstack Developer interview.
 
@@ -52,22 +77,9 @@ Generate a structured deep-dive explanation using this exact JSON format:
   "commonInterviewQuestions": ["...", "..."],
   "realWorldExample": "...",
   "commonMistakes": ["...", "..."]
-}`,
-        },
-      ],
-      response_format: { type: 'json_object' },
-    });
+}`;
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('AI returned empty response');
-    }
-
-    try {
-      return JSON.parse(content);
-    } catch {
-      throw new Error('AI returned invalid JSON');
-    }
+    return this.callAi(systemPrompt, userPrompt);
   }
 
   async generateQuiz(
@@ -78,12 +90,7 @@ Generate a structured deep-dive explanation using this exact JSON format:
       ? `Explanation:\n${aiExplanation}\n\n`
       : '';
 
-    const response = await this.client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a Senior Technical Interviewer.
+    const systemPrompt = `You are a Senior Technical Interviewer.
 
 Generate high-quality interview questions.
 
@@ -112,28 +119,13 @@ Rules:
 }
 - At least 2 scenario-based questions.
 - At least 1 hard-difficulty question.
-- Ensure JSON is valid.`,
-        },
-        {
-          role: 'user',
-          content: `Topic: ${noteContent}
+- Ensure JSON is valid.`;
 
-${explanationContext}Generate 5 questions in the exact JSON format specified.`,
-        },
-      ],
-      response_format: { type: 'json_object' },
-    });
+    const userPrompt = `Topic: ${noteContent}
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('AI returned empty response');
-    }
+${explanationContext}Generate 5 questions in the exact JSON format specified.`;
 
-    try {
-      return JSON.parse(content);
-    } catch {
-      throw new Error('AI returned invalid JSON');
-    }
+    return this.callAi(systemPrompt, userPrompt);
   }
 
   async gradeAnswer(
@@ -141,12 +133,7 @@ ${explanationContext}Generate 5 questions in the exact JSON format specified.`,
     expectedKeyPoints: string[],
     userAnswer: string,
   ): Promise<{ score: number; missingConcepts: string[]; feedback: string }> {
-    const response = await this.client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a strict Senior Technical Interviewer.
+    const systemPrompt = `You are a strict Senior Technical Interviewer.
 
 Evaluate answers critically.
 
@@ -160,11 +147,9 @@ Rules:
   "score": 0-10,
   "missing_concepts": ["concept1", "concept2"],
   "feedback": "Short constructive feedback"
-}`,
-        },
-        {
-          role: 'user',
-          content: `Question: ${question}
+}`;
+
+    const userPrompt = `Question: ${question}
 
 Expected Key Points: ${expectedKeyPoints.join(', ')}
 
@@ -175,26 +160,18 @@ Evaluate using this JSON format:
   "score": 0-10,
   "missing_concepts": ["concept1", "concept2"],
   "feedback": "Short constructive feedback"
-}`,
-        },
-      ],
-      response_format: { type: 'json_object' },
-    });
+}`;
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('AI returned empty response');
-    }
+    const result = await this.callAi<{
+      score: number;
+      missing_concepts: string[];
+      feedback: string;
+    }>(systemPrompt, userPrompt);
 
-    try {
-      const result = JSON.parse(content);
-      return {
-        score: result.score,
-        missingConcepts: result.missing_concepts || [],
-        feedback: result.feedback || '',
-      };
-    } catch {
-      throw new Error('AI returned invalid JSON');
-    }
+    return {
+      score: result.score,
+      missingConcepts: result.missing_concepts || [],
+      feedback: result.feedback || '',
+    };
   }
 }

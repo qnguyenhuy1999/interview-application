@@ -30,6 +30,7 @@ export class NotesService {
       where: { id: noteId, userId },
       include: {
         expansions: { take: 1, orderBy: { createdAt: 'desc' } },
+        quizzes: { take: 1, orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -42,7 +43,7 @@ export class NotesService {
       topic: note.topic,
       rawNote: note.rawNote,
       hasExpansion: note.expansions.length > 0,
-      hasQuiz: false,
+      hasQuiz: note.quizzes && note.quizzes.length > 0,
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     };

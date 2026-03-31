@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { QuizService } from './quiz.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -9,6 +10,7 @@ export class QuizController {
   constructor(private readonly quizService: QuizService) {}
 
   @Post('generate')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async generateQuiz(
     @CurrentUser() user: { id: string },
     @Body() body: { noteId: string },
@@ -25,6 +27,7 @@ export class QuizController {
   }
 
   @Post(':id/submit')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async submitQuiz(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,

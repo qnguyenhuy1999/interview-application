@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { NotesService } from './notes.service';
 import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,6 +67,7 @@ export class NotesController {
   }
 
   @Post(':id/deep-dive')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async generateDeepDive(
     @CurrentUser() user: { id: string },
     @Param('id') noteId: string,

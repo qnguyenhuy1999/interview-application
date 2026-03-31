@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  notes        Note[]
+
+  @@map("users")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  topic     String
+  rawNote   String   @map("raw_note")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expansions     NoteExpansion[]
+  quizzes        Quiz[]
+  reviewQueue    ReviewQueue[]
+
+  @@map("notes")
+}
+
+model NoteExpansion {
+  id                 String   @id @default(cuid())
+  noteId             String   @map("note_id")
+  structuredContent  Json     @map("structured_content")
+  schemaVersion      String   @default("1.0") @map("schema_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@map("note_expansions")
+}
+
+model Quiz {
+  id           String   @id @default(cuid())
+  noteId       String   @map("note_id")
+  questions    Json
+  schemaVersion String  @default("1.0") @map("schema_version")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  note    Note         @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  answers QuizAnswer[]
+
+  @@map("quizzes")
+}
+
+model QuizAnswer {
+  id               String   @id @default(cuid())
+  quizId           String   @map("quiz_id")
+  userAnswer       String   @map("user_answer")
+  score            Int
+  missingConcepts  Json     @default("[]") @map("missing_concepts")
+  feedback         String
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_answers")
+}
+
+model ReviewQueue {
+  id             String   @id @default(cuid())
+  noteId         String   @map("note_id")
+  nextReviewAt   DateTime @map("next_review_at")
+  weaknessLevel  Int      @default(0) @map("weakness_level")
+  streak         Int      @default(0)
+  status         String   @default("active") // active | paused | mastered
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@map("review_queue")
+}

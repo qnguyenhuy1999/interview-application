@@ -1,6 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { IAiProvider } from './ai-provider.interface';
-import { GEMINI_PROVIDER, OPENAI_PROVIDER } from './ai.module';
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { IAiProvider } from "./ai-provider.interface";
+import { GEMINI_PROVIDER, OPENAI_PROVIDER } from "./ai.constants";
 
 @Injectable()
 export class AiService {
@@ -9,34 +9,39 @@ export class AiService {
   private readonly fallback: IAiProvider | null;
 
   constructor(
-    @Inject(GEMINI_PROVIDER) private readonly geminiProvider: IAiProvider | null,
-    @Inject(OPENAI_PROVIDER) private readonly openAiProvider: IAiProvider | null,
+    @Inject(GEMINI_PROVIDER)
+    private readonly geminiProvider: IAiProvider | null,
+    @Inject(OPENAI_PROVIDER)
+    private readonly openAiProvider: IAiProvider | null,
   ) {
     this.primary = this.geminiProvider ?? this.openAiProvider;
     this.fallback =
-      this.geminiProvider && this.openAiProvider
-        ? this.openAiProvider
-        : ({} as IAiProvider);
+      this.geminiProvider && this.openAiProvider ? this.openAiProvider : null;
 
     const hasGemini = !!this.geminiProvider;
     const hasOpenAI = !!this.openAiProvider;
 
     if (!hasGemini && !hasOpenAI) {
-      this.logger.error('No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.');
+      this.logger.error(
+        "No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.",
+      );
     } else if (!hasGemini) {
-      this.logger.warn('Gemini not configured, falling back to OpenAI only.');
+      this.logger.warn("Gemini not configured, falling back to OpenAI only.");
     } else if (!hasOpenAI) {
-      this.logger.warn('OpenAI not configured as fallback.');
+      this.logger.warn("OpenAI not configured as fallback.");
     }
 
     this.logger.log(
-      `AI providers — primary: ${this.primary?.name ?? 'none'}, fallback: ${this.fallback?.name ?? 'none'}`,
+      `AI providers — primary: ${this.primary?.name ?? "none"}, fallback: ${this.fallback?.name ?? "none"}`,
     );
   }
 
-  private async callAi<T>(systemPrompt: string, userPrompt: string): Promise<T> {
+  private async callAi<T>(
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<T> {
     if (!this.primary) {
-      throw new Error('No AI provider configured');
+      throw new Error("No AI provider configured");
     }
 
     try {
@@ -58,13 +63,15 @@ export class AiService {
     userPrompt: string,
   ): Promise<T> {
     if (!provider) {
-      throw new Error('No AI provider available');
+      throw new Error("No AI provider available");
     }
     const { content } = await provider.chat(systemPrompt, userPrompt);
     return JSON.parse(content) as T;
   }
 
-  async generateDeepDive(noteContent: string): Promise<Record<string, unknown>> {
+  async generateDeepDive(
+    noteContent: string,
+  ): Promise<Record<string, unknown>> {
     const systemPrompt = `You are a Senior Software Architect and Technical Interviewer.
 
 Your task is to explain technical concepts at a Senior Fullstack Developer level.
@@ -108,7 +115,7 @@ Generate a structured deep-dive explanation using this exact JSON format:
   ): Promise<{ questions: unknown[] }> {
     const explanationContext = aiExplanation
       ? `Explanation:\n${aiExplanation}\n\n`
-      : '';
+      : "";
 
     const systemPrompt = `You are a Senior Technical Interviewer.
 
@@ -171,7 +178,7 @@ Rules:
 
     const userPrompt = `Question: ${question}
 
-Expected Key Points: ${expectedKeyPoints.join(', ')}
+Expected Key Points: ${expectedKeyPoints.join(", ")}
 
 User Answer: ${userAnswer}
 
@@ -191,7 +198,7 @@ Evaluate using this JSON format:
     return {
       score: result.score,
       missingConcepts: result.missing_concepts ?? [],
-      feedback: result.feedback ?? '',
+      feedback: result.feedback ?? "",
     };
   }
 }

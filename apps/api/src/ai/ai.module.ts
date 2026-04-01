@@ -1,12 +1,10 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { AiService } from './ai.service';
-import { GeminiProvider } from './gemini.provider';
-import { OpenAiProvider } from './openai.provider';
-import { IAiProvider } from './ai-provider.interface';
-
-export const GEMINI_PROVIDER = Symbol('GEMINI_PROVIDER');
-export const OPENAI_PROVIDER = Symbol('OPENAI_PROVIDER');
+import { Module } from "@nestjs/common";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { IAiProvider } from "./ai-provider.interface";
+import { GEMINI_PROVIDER, OPENAI_PROVIDER } from "./ai.constants";
+import { AiService } from "./ai.service";
+import { GeminiProvider } from "./gemini.provider";
+import { OpenAiProvider } from "./openai.provider";
 
 @Module({
   imports: [ConfigModule],
@@ -14,23 +12,33 @@ export const OPENAI_PROVIDER = Symbol('OPENAI_PROVIDER');
     AiService,
     {
       provide: GEMINI_PROVIDER,
-      useFactory: (): IAiProvider | null => {
+      useFactory: (configService: ConfigService): IAiProvider | null => {
+        const apiKey = configService.get<string>("GEMINI_API_KEY");
+        if (!apiKey) {
+          return null;
+        }
         try {
-          return new GeminiProvider(new (require('@nestjs/config').ConfigService)());
+          return new GeminiProvider(configService);
         } catch {
           return null;
         }
       },
+      inject: [ConfigService],
     },
     {
       provide: OPENAI_PROVIDER,
-      useFactory: (): IAiProvider | null => {
+      useFactory: (configService: ConfigService): IAiProvider | null => {
+        const apiKey = configService.get<string>("OPENAI_API_KEY");
+        if (!apiKey) {
+          return null;
+        }
         try {
-          return new OpenAiProvider(new (require('@nestjs/config').ConfigService)());
+          return new OpenAiProvider(configService);
         } catch {
           return null;
         }
       },
+      inject: [ConfigService],
     },
   ],
   exports: [AiService],

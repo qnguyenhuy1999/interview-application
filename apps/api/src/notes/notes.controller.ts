@@ -1,24 +1,29 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
   Body,
-  Param,
-  UseGuards,
+  Controller,
+  Delete,
+  Get,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
-import { NotesService } from './notes.service';
-import { AiService } from '../ai/ai.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateNoteDto, UpdateNoteDto, NoteResponseDto, NoteDetailResponseDto } from './dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
+import { AiService } from "../ai/ai.service";
+import { CurrentUser } from "../auth/current-user.decorator";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { PrismaService } from "../prisma/prisma.service";
+import {
+  CreateNoteDto,
+  NoteDetailResponseDto,
+  NoteResponseDto,
+  UpdateNoteDto,
+} from "./dto";
+import { NotesService } from "./notes.service";
 
-@Controller('notes')
+@Controller("notes")
 @UseGuards(JwtAuthGuard)
 export class NotesController {
   constructor(
@@ -36,57 +41,61 @@ export class NotesController {
   }
 
   @Get()
-  async findAll(@CurrentUser() user: { id: string }): Promise<NoteResponseDto[]> {
+  async findAll(
+    @CurrentUser() user: { id: string },
+  ): Promise<NoteResponseDto[]> {
     return this.notesService.findAll(user.id);
   }
 
-  @Get(':id')
+  @Get(":id")
   async findOne(
     @CurrentUser() user: { id: string },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ): Promise<NoteDetailResponseDto> {
     return this.notesService.findOne(user.id, id);
   }
 
-  @Put(':id')
+  @Put(":id")
   async update(
     @CurrentUser() user: { id: string },
-    @Param('id') id: string,
+    @Param("id") id: string,
     @Body() dto: UpdateNoteDto,
   ): Promise<NoteResponseDto> {
     return this.notesService.update(user.id, id, dto);
   }
 
-  @Delete(':id')
+  @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(
     @CurrentUser() user: { id: string },
-    @Param('id') id: string,
+    @Param("id") id: string,
   ): Promise<void> {
     return this.notesService.delete(user.id, id);
   }
 
-  @Post(':id/deep-dive')
+  @Post(":id/deep-dive")
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async generateDeepDive(
     @CurrentUser() user: { id: string },
-    @Param('id') noteId: string,
+    @Param("id") noteId: string,
   ): Promise<any> {
     const note = await this.prisma.note.findFirst({
       where: { id: noteId, userId: user.id },
     });
 
     if (!note) {
-      throw new Error('Note not found');
+      throw new Error("Note not found");
     }
 
-    const structuredContent = await this.aiService.generateDeepDive(note.rawNote);
+    const structuredContent = await this.aiService.generateDeepDive(
+      note.rawNote,
+    );
 
     const expansion = await this.prisma.noteExpansion.create({
       data: {
         noteId,
         structuredContent,
-        schemaVersion: '1.0',
+        schemaVersion: "1.0",
       },
     });
 

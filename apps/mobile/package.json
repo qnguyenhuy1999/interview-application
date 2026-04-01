@@ -16,16 +16,18 @@
     "expo": "~55.0.0",
     "expo-router": "~55.0.0",
     "expo-secure-store": "~55.0.0",
-    "react": "^19.2.0",
+    "react": "19.2.3",
     "react-hook-form": "^7.54.0",
-    "react-native": "0.84.0",
+    "react-native": "0.83.4",
+    "react-freeze": "^1.0.0",
+    "react-native-screens": "^4.0.0",
     "zod": "^4.0.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@types/node": "^22.0.0",
-    "@types/react": "~19.2.0",
+    "@types/react": "19.2.3",
     "typescript": "^5.9.0"
   }
 }

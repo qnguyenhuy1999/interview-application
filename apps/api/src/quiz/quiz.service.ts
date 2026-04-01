@@ -35,7 +35,7 @@ export class QuizService {
     const quiz = await this.prisma.quiz.create({
       data: {
         noteId,
-        questions: quizData,
+        questions: quizData as object,
         schemaVersion: '1.0',
       },
     });

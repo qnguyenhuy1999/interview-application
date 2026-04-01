@@ -94,7 +94,7 @@ export class NotesController {
     const expansion = await this.prisma.noteExpansion.create({
       data: {
         noteId,
-        structuredContent,
+        structuredContent: structuredContent as object,
         schemaVersion: "1.0",
       },
     });

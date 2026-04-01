@@ -1,50 +1,70 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { IAiProvider } from './ai-provider.interface';
+import { GEMINI_PROVIDER, OPENAI_PROVIDER } from './ai.module';
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly client: OpenAI;
-  private readonly maxRetries = 1;
+  private readonly primary: IAiProvider | null;
+  private readonly fallback: IAiProvider | null;
 
-  constructor(private readonly config: ConfigService) {
-    this.client = new OpenAI({
-      apiKey: this.config.get<string>('OPENAI_API_KEY'),
-    });
+  constructor(
+    @Inject(GEMINI_PROVIDER) private readonly geminiProvider: IAiProvider | null,
+    @Inject(OPENAI_PROVIDER) private readonly openAiProvider: IAiProvider | null,
+  ) {
+    this.primary = this.geminiProvider ?? this.openAiProvider;
+    this.fallback =
+      this.geminiProvider && this.openAiProvider
+        ? this.openAiProvider
+        : ({} as IAiProvider);
+
+    const hasGemini = !!this.geminiProvider;
+    const hasOpenAI = !!this.openAiProvider;
+
+    if (!hasGemini && !hasOpenAI) {
+      this.logger.error('No AI provider configured. Set GEMINI_API_KEY or OPENAI_API_KEY.');
+    } else if (!hasGemini) {
+      this.logger.warn('Gemini not configured, falling back to OpenAI only.');
+    } else if (!hasOpenAI) {
+      this.logger.warn('OpenAI not configured as fallback.');
+    }
+
+    this.logger.log(
+      `AI providers — primary: ${this.primary?.name ?? 'none'}, fallback: ${this.fallback?.name ?? 'none'}`,
+    );
   }
 
-  private async callAi<T>(
-    systemPrompt: string,
-    userPrompt: string,
-    attempt = 0,
-  ): Promise<T> {
+  private async callAi<T>(systemPrompt: string, userPrompt: string): Promise<T> {
+    if (!this.primary) {
+      throw new Error('No AI provider configured');
+    }
+
     try {
-      const response = await this.client.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        response_format: { type: 'json_object' },
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('AI returned empty response');
+      return await this.attempt<T>(this.primary, systemPrompt, userPrompt);
+    } catch (primaryErr) {
+      if (this.primary.isRateLimitError(primaryErr) && this.fallback) {
+        this.logger.warn(
+          `Primary provider (${this.primary.name}) hit rate limit, switching to fallback (${this.fallback.name})`,
+        );
+        return await this.attempt<T>(this.fallback, systemPrompt, userPrompt);
       }
-
-      return JSON.parse(content) as T;
-    } catch (err) {
-      if (attempt < this.maxRetries) {
-        this.logger.warn(`AI call failed (attempt ${attempt + 1}), retrying: ${(err as Error).message}`);
-        return this.callAi<T>(systemPrompt, userPrompt, attempt + 1);
-      }
-      throw err;
+      throw primaryErr;
     }
   }
 
-  async generateDeepDive(noteContent: string): Promise<Record<string, any>> {
+  private async attempt<T>(
+    provider: IAiProvider,
+    systemPrompt: string,
+    userPrompt: string,
+  ): Promise<T> {
+    if (!provider) {
+      throw new Error('No AI provider available');
+    }
+    const { content } = await provider.chat(systemPrompt, userPrompt);
+    return JSON.parse(content) as T;
+  }
+
+  async generateDeepDive(noteContent: string): Promise<Record<string, unknown>> {
     const systemPrompt = `You are a Senior Software Architect and Technical Interviewer.
 
 Your task is to explain technical concepts at a Senior Fullstack Developer level.
@@ -85,7 +105,7 @@ Generate a structured deep-dive explanation using this exact JSON format:
   async generateQuiz(
     noteContent: string,
     aiExplanation?: string,
-  ): Promise<{ questions: any[] }> {
+  ): Promise<{ questions: unknown[] }> {
     const explanationContext = aiExplanation
       ? `Explanation:\n${aiExplanation}\n\n`
       : '';
@@ -170,8 +190,8 @@ Evaluate using this JSON format:
 
     return {
       score: result.score,
-      missingConcepts: result.missing_concepts || [],
-      feedback: result.feedback || '',
+      missingConcepts: result.missing_concepts ?? [],
+      feedback: result.feedback ?? '',
     };
   }
 }
